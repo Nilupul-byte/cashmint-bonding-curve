@@ -18,22 +18,3 @@ All four compiled with `cashc` 0.13.2:
 npx cashc@0.13.2 <name>.cash --output <name>.json
 ```
 
-## What's different from upstream p-bond
-
-**1. Merged into a single contract.** Upstream p-bond's design splits trade/withdraw and completion across contracts in a way that (in our port) totalled 462 bytes / 326 ops. We merged the trade/withdraw/initiate-completion paths into one `PBond_unified_v2` contract driven by a single `hashedParams` argument that branches internally — 431 bytes / 287 ops, smaller than the two-contract version it replaced. `PBond_complete` stays separate since it's only ever reached once, after the curve UTXO is already gone.
-
-**Question for feedback:** does collapsing these paths into one entry point change any security property you were relying on the separation for? We haven't found one, but you'd know faster than we would.
-
-**2. `v1 → v2`: a real bug we hit, not an upstream one — but a subtlety worth flagging.** We generated a first "real economics" instance (`v1`, not included here — dead, address abandoned) by solving `x0`/`y0` independently against a fixed `bonding_max` to hit a round supply number and a specific BCH graduation target simultaneously. That silently broke an invariant `PBond_complete`'s own on-chain `dex_sats` formula depends on: for `v1`'s specific constants, the 5-pool DEX split came out to ~104.8% of the curve's actual reserve at graduation — a negative remainder for the reward+fee outputs, so `Complete()` rejects with a dust error on *every* attempt, permanently, for any transaction. One real (worthless, chipnet) token is stuck this way.
-
-Root cause: uniform scaling of `x0`/`y0`/`bonding_max` by the same factor is what preserves the DEX-split-to-reserve ratio (~0.826 in every working instance here) at any scale — but that also ties total supply and the BCH graduation target together via one factor, so you can hit a round supply number *or* a specific BCH target, not generally both. `v2` (included here) is genuine uniform scaling from your original constants and restores the same 0.826 ratio, verified against the real on-chain formula and against a real completed graduation.
-
-**Question for feedback:** is this the intended constraint on choosing new constants, or is there a way to hit both a round supply and an arbitrary BCH target without breaking the safety ratio that we're missing?
-
-**3. New: launcher vesting (`PBondVesting`).** Not derived from your design at all — a separate contract we added so a self-serve launcher gets funded from their own launch (10% of supply, time-locked) rather than pure fair-launch. One shared contract address for every launch (schedule/beneficiary live in the UTXO commitment, not compile-time constants, same "one address, many instances" pattern `PBond_unified_v2` itself uses). Discrete monthly installments rather than continuous release, because CashScript restricts `tx.time` to a single bare `require(tx.time >= expr)` — it can't be assigned to a variable or used inside an `if`, which we confirmed by direct compiler testing. Included here mainly for completeness/context, not because we're asking you to review a design that isn't yours — but flagging in case anything about it interacts with the curve/completion contracts in a way we haven't considered.
-
-## Verified so far (chipnet only)
-
-Full genesis → buy/sell → Initiate Completion → Complete Completion → real Cauldron `dexBytecode` pool creation cycle, run twice: once against the original (correctly-scaled) constants, and once catching the `v1` bug above live. Pool addresses decoded and diffed byte-for-byte against the locally-computed `dexBytecode` template to confirm they're genuine, not lookalikes.
-
-**Not yet done:** an independent security review by anyone outside CashMint. That's the actual ask here.
