@@ -1,0 +1,97 @@
+// NFT commitment must be:
+// - sha256(hashedCompletionParams)
+
+// hashedCompletionParams is defined as byte concatenation of:
+// - bytes1(completionBytecode.length())
+// - bytes(completionBytecode),
+// - bytes1(feePayoutBytecode.length()),
+// - bytes(feePayoutBytecode),
+// - bytes8(rewardPayoutAmount),
+// - bytes1(rewardPayoutBytecode.length()),
+// - bytes(rewardPayoutBytecode),
+// - bytes1(dexBytecode.length()),
+// - bytes(dexBytecode),
+// - bytes8(bonding_p),
+// - bytes8(bonding_y0),
+// - bytes8(bonding_pshift)
+
+contract PBond_complete(
+) {
+    function Complete(
+        bytes completionBytecode,
+        bytes feeBytecode,
+        int bonding_reward,
+        bytes rewardBytecode,
+        bytes dexBytecode,
+        int bonding_p,
+        int bonding_y0,
+        int bonding_pshift
+    ) {
+        // Only this UTXO as input
+        require(tx.inputs.length == 1);
+        // 8 outputs: 5 DEX outputs, 1 reward payout, 1 fee payout, 1 opreturn
+        require(tx.outputs.length == 8);
+        // Authenticate provided parameters
+        require(sha256(
+                        bytes(completionBytecode.length) + completionBytecode +
+                        bytes(feeBytecode.length) + feeBytecode +
+                        bytes8(bonding_reward) +
+                        bytes(rewardBytecode.length) + rewardBytecode +
+                        bytes(dexBytecode.length) + dexBytecode +
+                        bytes8(bonding_p) +
+                        bytes8(bonding_y0) +
+                        bytes8(bonding_pshift)) ==
+                tx.inputs[0].nftCommitment);
+
+        // Calculate DEX output amounts
+        int dex_outputs = 5;
+        int bonding_tokens = tx.inputs[0].tokenAmount;
+        int bonding_denominator = bonding_tokens + bonding_y0;
+        int dex_p = bonding_p /
+                    bonding_denominator * bonding_tokens /
+                    bonding_denominator * bonding_tokens /
+                    (dex_outputs * dex_outputs) * bonding_pshift;
+        int dex_tokens = bonding_tokens / dex_outputs;
+        int dex_sats = dex_p / dex_tokens;
+        // Verify DEX outputs category
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[1].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[2].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[3].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[4].tokenCategory == tx.inputs[0].tokenCategory);
+        // Verify DEX outputs token & sat amounts
+        require(tx.outputs[0].tokenAmount == dex_tokens);
+        require(tx.outputs[1].tokenAmount == dex_tokens);
+        require(tx.outputs[2].tokenAmount == dex_tokens);      
+        require(tx.outputs[3].tokenAmount == dex_tokens);      
+        require(tx.outputs[4].tokenAmount == bonding_tokens - dex_tokens * (dex_outputs - 1));
+        require(tx.outputs[0].value == dex_sats);
+        require(tx.outputs[1].value == dex_sats);
+        require(tx.outputs[2].value == dex_sats);
+        require(tx.outputs[3].value == dex_sats);
+        require(tx.outputs[4].value == dex_sats);
+        // Note: no need to check NFT here because we're spending an immutable NFT
+        // and will explicitly burn it as last output
+        // Verify DEX outputs contract
+        require(tx.outputs[0].lockingBytecode == dexBytecode);
+        require(tx.outputs[1].lockingBytecode == dexBytecode);
+        require(tx.outputs[2].lockingBytecode == dexBytecode);
+        require(tx.outputs[3].lockingBytecode == dexBytecode);
+        require(tx.outputs[4].lockingBytecode == dexBytecode);
+        // Verify reward output
+        require(tx.outputs[5].value == bonding_reward);
+        require(tx.outputs[5].tokenCategory == 0x);
+        require(tx.outputs[5].lockingBytecode == rewardBytecode);
+        // Verify fee output
+        int remainder_sats = tx.inputs[0].value - dex_sats * dex_outputs - bonding_reward;
+        int txFee = 1100;
+        require(tx.outputs[6].value == remainder_sats - txFee);
+        require(tx.outputs[6].tokenCategory == 0x);
+        require(tx.outputs[6].lockingBytecode == feeBytecode);
+        // Verify NFT burn
+        require(tx.outputs[7].value == 0);
+        require(tx.outputs[7].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[7].tokenAmount == 0);
+        require(tx.outputs[7].lockingBytecode == 0x6a0653554d4d4f4e140000000000000000000000000000000000000000);
+    }
+}

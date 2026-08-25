@@ -1,0 +1,121 @@
+// PBondVesting — time-locked release vault for a fixed token allocation carved out at
+// a self-serve launch's genesis (the "Product Development" allocation — see NOTES.md
+// "Builder vesting"). NOT part of upstream p-bond; new, CashMint-specific, untested
+// against chipnet as of writing. Compiled with cashc 0.13.2, same as the
+// p_bond_unified_v2_*_v013.cash family it's paired with.
+//
+// One shared contract address for every launch, same "one address, many instances"
+// principle p_bond_main.cash itself uses: schedule and beneficiary are NOT compile-time
+// constants — they live in the UTXO's own commitment and get re-read on every spend, so
+// a fresh genesis just creates a new commitment at this same address. No constructor
+// params needed at all.
+//
+// Discrete monthly installments, NOT continuous linear math — CashScript restricts
+// `tx.time` to a single bare `require(tx.time >= <expr>)` per call (confirmed by
+// direct compiler testing: it cannot be assigned to a variable or used inside an `if`,
+// only as the immediate top-level condition of a require() — the compiler rejects both
+// forms). A genuinely continuous "elapsed/total * amount" formula would need to *branch*
+// on the current time, which the language doesn't allow. Discrete checkpoints, where
+// each claim asserts one specific `tx.time >= vestStart + cliff + n*period` threshold
+// and releases one fixed installment, sidesteps this entirely — the same pattern the
+// real-world CashScript "Subscription" vesting contract on bitcoincashresearch.org uses
+// (fixed periodic installments gated by a single time check per claim, not continuous
+// release).
+//
+// 2-month cliff (5,184,000s), then 10 monthly installments of 1/10th each
+// (2,592,000s apart) — 12 months/360 days total to fully vest. 30-day months
+// throughout (calendar months aren't representable on-chain — the standard
+// on-chain simplification, not an oversight). Schedule constants are structural,
+// same for every launch that uses this contract (not a per-launch genesis param) —
+// consistent with bonding_completionPercent being fixed in p_bond_main.cash rather
+// than configurable per launch.
+//
+// Commitment layout (33 bytes, capability='mutable' until the final claim empties it):
+//   bytes20 beneficiaryPKH, bytes4 vestStart (unix seconds, LE),
+//   bytes8 originalAmount (LE), bytes1 claimsSoFar (0-10)
+//
+// tx.time requires the spending transaction to set nLockTime as a Unix timestamp
+// (>= 500000000) with at least one non-final input sequence number — same mechanism
+// p_bond_main.cash's own sell-timelock branch (bonding_locktime) already relies on.
+//
+// Single primary key only for now — deliberate scope cut, no guardian/dead-man's-switch
+// recovery fallback yet (see NOTES.md for the open follow-up). Losing the beneficiary
+// key permanently strands whatever hasn't been claimed yet; there is no other spend path.
+
+contract PBondVesting(
+) {
+    function Claim(pubkey pk, sig s) {
+        // Pin the vault to input 0 / its own recreated output to output 0 — same
+        // "cheap to state explicitly" reasoning already used throughout this contract
+        // family rather than relying on activeInputIndex alone to stay put.
+        require(this.activeInputIndex == 0);
+
+        int cliffSeconds = 5184000;   // 2 months @ 30 days
+        int periodSeconds = 2592000;  // 1 month @ 30 days, per installment after the cliff
+        int totalInstallments = 10;
+
+        bytes beneficiaryPKH, bytes r1 = tx.inputs[0].nftCommitment.split(20);
+        bytes vestStartB, bytes r2 = r1.split(4);
+        bytes originalAmountB, bytes claimsSoFarB = r2.split(8);
+
+        require(hash160(pk) == beneficiaryPKH);
+        require(checkSig(s, pk));
+
+        int vestStart = int(vestStartB);
+        int originalAmount = int(originalAmountB);
+        int claimsSoFar = int(claimsSoFarB);
+
+        // Already fully claimed — nothing left to unlock, ever.
+        require(claimsSoFar < totalInstallments);
+
+        // The (claimsSoFar+1)-th installment unlocks at vestStart + cliff, then one
+        // more period per prior claim already taken.
+        require(tx.time >= vestStart + cliffSeconds + claimsSoFar * periodSeconds);
+
+        int inAmount = tx.inputs[0].tokenAmount;
+        int newClaimsSoFar = claimsSoFar + 1;
+        int claimableNow = originalAmount / totalInstallments;
+
+        bytes category = tx.inputs[0].tokenCategory.split(32)[0];
+        bytes25 beneficiaryLock = new LockingBytecodeP2PKH(unsafe_bytes20(beneficiaryPKH));
+
+        if (newClaimsSoFar < totalInstallments) {
+            // Partial claim: recreate the vault at output 0 with the unclaimed
+            // remainder, pay out one installment at output 1, allow one optional
+            // pure-BCH change output for whoever fronted the tx fee.
+            int remaining = inAmount - claimableNow;
+
+            require(tx.outputs.length >= 2);
+            require(tx.outputs.length <= 3);
+
+            require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+            require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+            require(tx.outputs[0].tokenAmount == remaining);
+            require(tx.outputs[0].nftCommitment ==
+                    beneficiaryPKH + vestStartB + originalAmountB + toPaddedBytes(newClaimsSoFar, 1));
+
+            require(tx.outputs[1].lockingBytecode == beneficiaryLock);
+            require(tx.outputs[1].tokenCategory == category);
+            require(tx.outputs[1].tokenAmount == claimableNow);
+
+            if (tx.outputs.length == 3) {
+                require(tx.outputs[2].tokenCategory == 0x);
+            }
+        } else {
+            // Final (10th) installment: release whatever remains in the vault, not
+            // just originalAmount/10 again — this absorbs the integer-division
+            // remainder from the previous 9 installments so no dust is ever
+            // permanently stranded. The vault closes for good; no output recreates it.
+            require(tx.outputs.length >= 1);
+            require(tx.outputs.length <= 2);
+
+            require(tx.outputs[0].lockingBytecode == beneficiaryLock);
+            require(tx.outputs[0].tokenCategory == category);
+            require(tx.outputs[0].tokenAmount == inAmount);
+
+            if (tx.outputs.length == 2) {
+                require(tx.outputs[1].tokenCategory == 0x);
+            }
+        }
+    }
+}

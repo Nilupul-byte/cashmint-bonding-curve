@@ -1,0 +1,189 @@
+{
+  "contractName": "PBond_complete",
+  "constructorInputs": [],
+  "abi": [
+    {
+      "name": "Complete",
+      "inputs": [
+        {
+          "name": "completionBytecode",
+          "type": "bytes"
+        },
+        {
+          "name": "feeBytecode",
+          "type": "bytes"
+        },
+        {
+          "name": "bonding_reward",
+          "type": "int"
+        },
+        {
+          "name": "rewardBytecode",
+          "type": "bytes"
+        },
+        {
+          "name": "dexBytecode",
+          "type": "bytes"
+        },
+        {
+          "name": "bonding_p",
+          "type": "int"
+        },
+        {
+          "name": "bonding_y0",
+          "type": "int"
+        },
+        {
+          "name": "bonding_pshift",
+          "type": "int"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_TXINPUTCOUNT OP_1 OP_NUMEQUALVERIFY OP_TXOUTPUTCOUNT OP_8 OP_NUMEQUALVERIFY OP_DUP OP_SIZE OP_NIP OP_SWAP OP_CAT OP_OVER OP_SIZE OP_NIP OP_CAT OP_OVER OP_CAT OP_2 OP_PICK OP_8 OP_NUM2BIN OP_CAT OP_3 OP_PICK OP_SIZE OP_NIP OP_CAT OP_3 OP_PICK OP_CAT OP_4 OP_PICK OP_SIZE OP_NIP OP_CAT OP_4 OP_PICK OP_CAT OP_5 OP_PICK OP_8 OP_NUM2BIN OP_CAT OP_6 OP_PICK OP_8 OP_NUM2BIN OP_CAT OP_7 OP_PICK OP_8 OP_NUM2BIN OP_CAT OP_SHA256 OP_0 OP_UTXOTOKENCOMMITMENT OP_EQUALVERIFY OP_5 OP_0 OP_UTXOTOKENAMOUNT OP_DUP OP_8 OP_ROLL OP_ADD OP_7 OP_ROLL OP_OVER OP_DIV OP_2 OP_PICK OP_MUL OP_SWAP OP_DIV OP_OVER OP_MUL OP_2 OP_PICK OP_3 OP_PICK OP_MUL OP_DIV OP_7 OP_ROLL OP_MUL OP_OVER OP_3 OP_PICK OP_DIV OP_SWAP OP_OVER OP_DIV OP_0 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_1 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_2 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_3 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_4 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENAMOUNT OP_2 OP_PICK OP_NUMEQUALVERIFY OP_1 OP_OUTPUTTOKENAMOUNT OP_2 OP_PICK OP_NUMEQUALVERIFY OP_2 OP_OUTPUTTOKENAMOUNT OP_2 OP_PICK OP_NUMEQUALVERIFY OP_3 OP_OUTPUTTOKENAMOUNT OP_2 OP_PICK OP_NUMEQUALVERIFY OP_4 OP_OUTPUTTOKENAMOUNT OP_2SWAP OP_4 OP_PICK OP_1SUB OP_MUL OP_SUB OP_NUMEQUALVERIFY OP_0 OP_OUTPUTVALUE OP_OVER OP_NUMEQUALVERIFY OP_1 OP_OUTPUTVALUE OP_OVER OP_NUMEQUALVERIFY OP_2 OP_OUTPUTVALUE OP_OVER OP_NUMEQUALVERIFY OP_3 OP_OUTPUTVALUE OP_OVER OP_NUMEQUALVERIFY OP_4 OP_OUTPUTVALUE OP_OVER OP_NUMEQUALVERIFY OP_0 OP_OUTPUTBYTECODE OP_6 OP_PICK OP_EQUALVERIFY OP_1 OP_OUTPUTBYTECODE OP_6 OP_PICK OP_EQUALVERIFY OP_2 OP_OUTPUTBYTECODE OP_6 OP_PICK OP_EQUALVERIFY OP_3 OP_OUTPUTBYTECODE OP_6 OP_PICK OP_EQUALVERIFY OP_4 OP_OUTPUTBYTECODE OP_6 OP_ROLL OP_EQUALVERIFY OP_5 OP_OUTPUTVALUE OP_4 OP_PICK OP_NUMEQUALVERIFY OP_5 OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_5 OP_OUTPUTBYTECODE OP_5 OP_ROLL OP_EQUALVERIFY OP_0 OP_UTXOVALUE OP_SWAP OP_ROT OP_MUL OP_SUB OP_ROT OP_SUB 4c04 OP_6 OP_OUTPUTVALUE OP_ROT OP_ROT OP_SUB OP_NUMEQUALVERIFY OP_6 OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_6 OP_OUTPUTBYTECODE OP_EQUALVERIFY OP_7 OP_OUTPUTVALUE OP_0 OP_NUMEQUALVERIFY OP_7 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_7 OP_OUTPUTTOKENAMOUNT OP_0 OP_NUMEQUALVERIFY OP_7 OP_OUTPUTBYTECODE 6a0653554d4d4f4e140000000000000000000000000000000000000000 OP_EQUAL",
+  "source": "// NFT commitment must be:\n// - sha256(hashedCompletionParams)\n\n// hashedCompletionParams is defined as byte concatenation of:\n// - bytes1(completionBytecode.length())\n// - bytes(completionBytecode),\n// - bytes1(feePayoutBytecode.length()),\n// - bytes(feePayoutBytecode),\n// - bytes8(rewardPayoutAmount),\n// - bytes1(rewardPayoutBytecode.length()),\n// - bytes(rewardPayoutBytecode),\n// - bytes1(dexBytecode.length()),\n// - bytes(dexBytecode),\n// - bytes8(bonding_p),\n// - bytes8(bonding_y0),\n// - bytes8(bonding_pshift)\n\ncontract PBond_complete(\n) {\n    function Complete(\n        bytes completionBytecode,\n        bytes feeBytecode,\n        int bonding_reward,\n        bytes rewardBytecode,\n        bytes dexBytecode,\n        int bonding_p,\n        int bonding_y0,\n        int bonding_pshift\n    ) {\n        // Only this UTXO as input\n        require(tx.inputs.length == 1);\n        // 8 outputs: 5 DEX outputs, 1 reward payout, 1 fee payout, 1 opreturn\n        require(tx.outputs.length == 8);\n        // Authenticate provided parameters\n        require(sha256(\n                        bytes(completionBytecode.length) + completionBytecode +\n                        bytes(feeBytecode.length) + feeBytecode +\n                        bytes8(bonding_reward) +\n                        bytes(rewardBytecode.length) + rewardBytecode +\n                        bytes(dexBytecode.length) + dexBytecode +\n                        bytes8(bonding_p) +\n                        bytes8(bonding_y0) +\n                        bytes8(bonding_pshift)) ==\n                tx.inputs[0].nftCommitment);\n\n        // Calculate DEX output amounts\n        int dex_outputs = 5;\n        int bonding_tokens = tx.inputs[0].tokenAmount;\n        int bonding_denominator = bonding_tokens + bonding_y0;\n        int dex_p = bonding_p /\n                    bonding_denominator * bonding_tokens /\n                    bonding_denominator * bonding_tokens /\n                    (dex_outputs * dex_outputs) * bonding_pshift;\n        int dex_tokens = bonding_tokens / dex_outputs;\n        int dex_sats = dex_p / dex_tokens;\n        // Verify DEX outputs category\n        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);\n        require(tx.outputs[1].tokenCategory == tx.inputs[0].tokenCategory);\n        require(tx.outputs[2].tokenCategory == tx.inputs[0].tokenCategory);\n        require(tx.outputs[3].tokenCategory == tx.inputs[0].tokenCategory);\n        require(tx.outputs[4].tokenCategory == tx.inputs[0].tokenCategory);\n        // Verify DEX outputs token & sat amounts\n        require(tx.outputs[0].tokenAmount == dex_tokens);\n        require(tx.outputs[1].tokenAmount == dex_tokens);\n        require(tx.outputs[2].tokenAmount == dex_tokens);      \n        require(tx.outputs[3].tokenAmount == dex_tokens);      \n        require(tx.outputs[4].tokenAmount == bonding_tokens - dex_tokens * (dex_outputs - 1));\n        require(tx.outputs[0].value == dex_sats);\n        require(tx.outputs[1].value == dex_sats);\n        require(tx.outputs[2].value == dex_sats);\n        require(tx.outputs[3].value == dex_sats);\n        require(tx.outputs[4].value == dex_sats);\n        // Note: no need to check NFT here because we're spending an immutable NFT\n        // and will explicitly burn it as last output\n        // Verify DEX outputs contract\n        require(tx.outputs[0].lockingBytecode == dexBytecode);\n        require(tx.outputs[1].lockingBytecode == dexBytecode);\n        require(tx.outputs[2].lockingBytecode == dexBytecode);\n        require(tx.outputs[3].lockingBytecode == dexBytecode);\n        require(tx.outputs[4].lockingBytecode == dexBytecode);\n        // Verify reward output\n        require(tx.outputs[5].value == bonding_reward);\n        require(tx.outputs[5].tokenCategory == 0x);\n        require(tx.outputs[5].lockingBytecode == rewardBytecode);\n        // Verify fee output\n        int remainder_sats = tx.inputs[0].value - dex_sats * dex_outputs - bonding_reward;\n        int txFee = 1100;\n        require(tx.outputs[6].value == remainder_sats - txFee);\n        require(tx.outputs[6].tokenCategory == 0x);\n        require(tx.outputs[6].lockingBytecode == feeBytecode);\n        // Verify NFT burn\n        require(tx.outputs[7].value == 0);\n        require(tx.outputs[7].tokenCategory == tx.inputs[0].tokenCategory);\n        require(tx.outputs[7].tokenAmount == 0);\n        require(tx.outputs[7].lockingBytecode == 0x6a0653554d4d4f4e140000000000000000000000000000000000000000);\n    }\n}\n",
+  "debug": {
+    "bytecode": "c3519dc4589d7682777c7e7882777e787e527958807e537982777e53797e547982777e54797e557958807e567958807e577958807ea800cf885500d076587a93577a78965279957c967895527953799596577a95785379967c789600d100ce8851d100ce8852d100ce8853d100ce8854d100ce8800d352799d51d352799d52d352799d53d352799d54d37254798c95949d00cc789d51cc789d52cc789d53cc789d54cc789d00cd56798851cd56798852cd56798853cd56798854cd567a8855cc54799d55d1008855cd557a8800c67c7b95947b94024c0456cc7b7b949d56d1008856cd8857cc009d57d100ce8857d3009d57cd1d6a0653554d4d4f4e14000000000000000000000000000000000000000087",
+    "sourceMap": "31:16:31:32;:36::37;:8::39:1;33:16:33:33:0;:37::38;:8::40:1;36:30:36:48:0;:::55:1;;:59::77:0;:24:::1;37:30:37:41:0;:::48:1;;36:24::49;37:52::63:0;36:24:::1;38:31:38:45:0;;:24::46:1;;36;39:30:39:44:0;;:::51:1;;36:24::52;39:55::69:0;;36:24:::1;40:30:40:41:0;;:::48:1;;36:24::49;40:52::63:0;;36:24:::1;41:31:41:40:0;;:24::41:1;;36;42:31:42::0;;:24::42:1;;36;43:31:43:45:0;;:24::46:1;;36;35:16::47;44:26:44:27:0;:16::42:1;35:8::44;47:26:47:27:0;48:39:48:40;:29::53:1;49:34:49:48:0;:51::61;;:34:::1;50:20:50:29:0;;51::51:39;50::::1;51:42::56:0;;50:20:::1;52::52:39:0;50::::1;52:42::56:0;50:20:::1;53:21:53:32:0;;:35::46;;:21:::1;50:20::47;53:50::64:0;;50:20:::1;54:25:54:39:0;:42::53;;:25:::1;55:23:55:28:0;:31::41;:23:::1;57:27:57:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;58:27:58:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;59:27:59:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;60:27:60:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;61:27:61:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;63:27:63:28:0;:16::41:1;:45::55:0;;:8::57:1;64:27:64:28:0;:16::41:1;:45::55:0;;:8::57:1;65:27:65:28:0;:16::41:1;:45::55:0;;:8::57:1;66:27:66:28:0;:16::41:1;:45::55:0;;:8::57:1;67:27:67:28:0;:16::41:1;:45::72:0;:76::87;;:::91:1;:62::92;:45;:8::94;68:27:68:28:0;:16::35:1;:39::47:0;:8::49:1;69:27:69:28:0;:16::35:1;:39::47:0;:8::49:1;70:27:70:28:0;:16::35:1;:39::47:0;:8::49:1;71:27:71:28:0;:16::35:1;:39::47:0;:8::49:1;72:27:72:28:0;:16::35:1;:39::47:0;:8::49:1;76:27:76:28:0;:16::45:1;:49::60:0;;:8::62:1;77:27:77:28:0;:16::45:1;:49::60:0;;:8::62:1;78:27:78:28:0;:16::45:1;:49::60:0;;:8::62:1;79:27:79:28:0;:16::45:1;:49::60:0;;:8::62:1;80:27:80:28:0;:16::45:1;:49::60:0;;:8::62:1;82:27:82:28:0;:16::35:1;:39::53:0;;:8::55:1;83:27:83:28:0;:16::43:1;:47::49:0;:8::51:1;84:27:84:28:0;:16::45:1;:49::63:0;;:8::65:1;86:39:86:40:0;:29::47:1;:50::58:0;:61::72;:50:::1;:29;:75::89:0;:29:::1;87:20:87:24:0;88:27:88:28;:16::35:1;:39::53:0;:56::61;:39:::1;:8::63;89:27:89:28:0;:16::43:1;:47::49:0;:8::51:1;90:27:90:28:0;:16::45:1;:8::62;92:27:92:28:0;:16::35:1;:39::40:0;:8::42:1;93:27:93:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;94:27:94:28:0;:16::41:1;:45::46:0;:8::48:1;95:27:95:28:0;:16::45:1;:49::109:0;:8::111:1",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 2,
+        "line": 31
+      },
+      {
+        "ip": 5,
+        "line": 33
+      },
+      {
+        "ip": 56,
+        "line": 35
+      },
+      {
+        "ip": 95,
+        "line": 57
+      },
+      {
+        "ip": 100,
+        "line": 58
+      },
+      {
+        "ip": 105,
+        "line": 59
+      },
+      {
+        "ip": 110,
+        "line": 60
+      },
+      {
+        "ip": 115,
+        "line": 61
+      },
+      {
+        "ip": 120,
+        "line": 63
+      },
+      {
+        "ip": 125,
+        "line": 64
+      },
+      {
+        "ip": 130,
+        "line": 65
+      },
+      {
+        "ip": 135,
+        "line": 66
+      },
+      {
+        "ip": 144,
+        "line": 67
+      },
+      {
+        "ip": 148,
+        "line": 68
+      },
+      {
+        "ip": 152,
+        "line": 69
+      },
+      {
+        "ip": 156,
+        "line": 70
+      },
+      {
+        "ip": 160,
+        "line": 71
+      },
+      {
+        "ip": 164,
+        "line": 72
+      },
+      {
+        "ip": 169,
+        "line": 76
+      },
+      {
+        "ip": 174,
+        "line": 77
+      },
+      {
+        "ip": 179,
+        "line": 78
+      },
+      {
+        "ip": 184,
+        "line": 79
+      },
+      {
+        "ip": 189,
+        "line": 80
+      },
+      {
+        "ip": 194,
+        "line": 82
+      },
+      {
+        "ip": 198,
+        "line": 83
+      },
+      {
+        "ip": 203,
+        "line": 84
+      },
+      {
+        "ip": 218,
+        "line": 88
+      },
+      {
+        "ip": 222,
+        "line": 89
+      },
+      {
+        "ip": 225,
+        "line": 90
+      },
+      {
+        "ip": 229,
+        "line": 92
+      },
+      {
+        "ip": 234,
+        "line": 93
+      },
+      {
+        "ip": 238,
+        "line": 94
+      },
+      {
+        "ip": 243,
+        "line": 95
+      }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.12.1"
+  },
+  "updatedAt": "2026-08-15T15:07:21.217Z"
+}
