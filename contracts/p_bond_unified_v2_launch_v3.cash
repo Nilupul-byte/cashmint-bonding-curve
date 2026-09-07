@@ -1,0 +1,192 @@
+// LAUNCH v3 — same constants as launch_v2, one security fix in the Initiate Completion
+// branch: the output NFT capability is now pinned to none (see the SECURITY comment on
+// that require() below). launch_v2 had no on-chain tokens on mainnet and only chipnet
+// test tokens; superseded, address kept inspectable, no live code path should reference
+// launch_v2 going forward. The constant-derivation history below is unchanged from v2.
+//
+// ---- launch_v2 history (still applies to v3's constants) ----
+//
+// LAUNCH v2 replaced the broken launch_v1 instance. v1's x0/y0 were solved
+// independently against a fixed bonding_max (chosen to hit a specific 9 BCH graduation
+// target while keeping a clean "90% of 1B" supply number) — this silently broke a
+// safety invariant the graduation-completion math depends on. Found live: a real
+// launch_v1 token reached "Ready to graduate" and Complete Completion was rejected with
+// "dust (code 64)" on EVERY attempt. Traced to p_bond_complete.cash's own on-chain
+// dex_sats formula (recomputed and hard-enforced inside the contract itself, not just a
+// client-side estimate) -- for v1's specific constants, the 5-pool DEX split came out to
+// ~104.8% of the curve's actual reserve at graduation, leaving a NEGATIVE remainder for
+// the reward+fee outputs. Verified this is fixable only by re-deriving the constants,
+// not by any client-side workaround (the contract enforces the exact formula result).
+//
+// Root cause: the original p-bond design (and every other instance in this pilot --
+// test3, unified-ui) scales x0/y0/max ALL by the SAME factor from the proven original,
+// which keeps the DEX-split-to-reserve ratio at a safe ~0.826 regardless of scale. v1
+// broke that by fixing bonding_max independently instead of deriving it via the same
+// scale factor as x0/y0. v1's own token (category 335a1584..., chipnet, worthless test
+// funds) is now permanently stuck at "Ready to graduate" -- Complete Completion can
+// never succeed for it, by the contract's own on-chain math, for any transaction.
+// Abandoned in place; do not attempt to fix it.
+//
+// v2's constants ARE genuine uniform scaling from the original (k = 100,000,000,000 /
+// 45,000,000,000), verified via the real on-chain dex_sats formula to restore the exact
+// same 0.8264 safety ratio the original/test3/unified-ui curves all share. Total supply
+// is 500,000,000 (not 1B) -- the round-number tradeoff this required, chosen after
+// finding no (x0,y0,max) triple hits both a round 1B supply AND a graduation target near
+// 9 BCH without breaking the safety ratio (that tension is inherent: uniform scaling
+// ties raised-BCH and total-supply together via one factor, so you can pick either a
+// target BCH raise or a round supply number, generally not both). Raises ~9.45 BCH at
+// graduation (90% of the demo/production split's implicit ~10.5 BCH... actually: exactly
+// 21 BCH x 0.45 = 9.45, the same "curve pool is 45% of the original's implicit 100%
+// pool" relationship as every other scaled instance here). bonding_max is 45,000,000,000
+// (90% of the 50,000,000,000-raw/500M-display total supply -- the other 10%,
+// 5,000,000,000 raw/50M display, goes to the PBondVesting "Product Development"
+// allocation at genesis, same mechanism as v1, just re-sized to the new total).
+//
+// Everything else (ABI, branching, every other require() check, commitment layout) is
+// byte-for-byte identical to p_bond_unified_v2_ui_v2.cash — only the three constants
+// below and the one Initiate-Completion capability require() differ. Compiled with
+// cashc 0.13.2.
+//
+// launch_v2 (the predecessor of this file) was VERIFIED end-to-end on real chipnet
+// (2026-08-23): genesis, buy, sell, Initiate Completion, and Complete Completion all
+// broadcast successfully, and the resulting 5 Cauldron DEX pool UTXOs were independently
+// confirmed on-chain afterward (each holding real, non-dust sats/tokens matching the
+// transaction's own outputs) — not just a formula check. See NOTES.md Phase 9 for every
+// txid. v3's only delta from that verified artifact is the capability pin below, covered
+// by the MockNetworkProvider regression suite in
+// src/services/bonding/__tests__/unifiedCompletion.test.ts.
+
+contract PBond_unified_v2(
+) {
+    function TradeOrWithdrawOrComplete(bytes hashedParams) {
+        int bonding_initial_sats = 1000;
+        int bonding_max = 45000000000;
+        int bonding_x0 = 409851000;
+        int bonding_y0 = 6613386206;
+        int bonding_completionPercent = 80;
+        int bonding_pshift = 16;
+        int bonding_p = ((bonding_max + bonding_y0) / bonding_pshift) * (bonding_initial_sats + bonding_x0);
+
+        bytes paramsHash, bytes fr1 = tx.inputs[this.activeInputIndex].nftCommitment.split(32);
+        bytes bonding_minBpsB, bytes fr2 = fr1.split(2);
+        bytes bonding_locktimeB, bytes fr3 = fr2.split(4);
+        bytes feeRateBpsB, bytes fr4 = fr3.split(2);
+        bytes minTradeFeeB, bytes fr5 = fr4.split(2);
+        bytes minFeeWithdrawalB, bytes bondingCompletedB = fr5.split(4);
+
+        int bondingCompleted = int(bondingCompletedB);
+
+        if (!bool(bondingCompleted)) {
+            int inTokens = tx.inputs[this.activeInputIndex].tokenAmount;
+            int outTokens = tx.outputs[this.activeInputIndex].tokenAmount;
+            int tokenDifference = outTokens - inTokens;
+            int priorRequiredSats = bonding_p / ((inTokens + bonding_y0) / bonding_pshift) - bonding_x0;
+
+            if (bool(tokenDifference)) {
+                // Trade (buy or sell)
+                int requiredOutSats = bonding_p / ((outTokens + bonding_y0) / bonding_pshift) - bonding_x0;
+                int curveDelta = requiredOutSats - priorRequiredSats;
+                int satsVolume = abs(curveDelta);
+                int feeToAdd = satsVolume * int(feeRateBpsB) / 10000;
+                int minTradeFee = int(minTradeFeeB);
+                if (feeToAdd < minTradeFee) {
+                    feeToAdd = minTradeFee;
+                }
+                require(tx.outputs[this.activeInputIndex].value >=
+                        tx.inputs[this.activeInputIndex].value + curveDelta + feeToAdd);
+
+                if (tokenDifference < 0) {
+                    // Buy: 0.01% overshoot floor + graduation trigger
+                    require(outTokens >= bonding_max * ((100 - bonding_completionPercent) * 100 - 1) / 10000);
+                    if (outTokens <= bonding_max - bonding_max * bonding_completionPercent / 100) {
+                        bondingCompleted = 1;
+                    }
+                } else {
+                    // Sell: sniping-protection floor
+                    int bonding_minBps = int(bonding_minBpsB);
+                    if (outTokens > bonding_max - bonding_max * bonding_minBps / 10000) {
+                        int bonding_locktime = int(bonding_locktimeB);
+                        require(tx.time >= bonding_locktime);
+                    }
+                }
+                require(hashedParams == 0x);
+            } else {
+                // Fee withdrawal
+                require(tx.inputs.length == 1);
+                require(tx.outputs.length == 2);
+
+                int availableFees = tx.inputs[this.activeInputIndex].value - priorRequiredSats;
+
+                require(sha256(hashedParams) == paramsHash);
+                bytes clen, bytes crem = hashedParams.split(1);
+                bytes frem = crem.split(int(clen))[1];
+                bytes flen, bytes frem2 = frem.split(1);
+                bytes feePayoutBytecode = frem2.split(int(flen))[0];
+
+                require(tx.outputs[this.activeInputIndex].value == priorRequiredSats);
+                // Explicit defense-in-depth check, added after cross-referencing
+                // ParyonUSD's audited-contract checklist (require lockingBytecode,
+                // tokenCategory, value, tokenAmount, AND nftCommitment on every
+                // self-replicating output, every branch). Provably redundant here since
+                // this branch is only reached when tokenDifference==0 (i.e. outTokens
+                // already equals inTokens by construction, from the read at branch entry)
+                // -- but that reasoning is exactly the class of subtlety Paryon's own
+                // audited contracts got wrong at first. Cheap to state explicitly rather
+                // than rely on control-flow reasoning holding forever under future edits.
+                require(tx.outputs[this.activeInputIndex].tokenAmount == inTokens);
+
+                int txFee = 1000;
+                int payout = availableFees - txFee;
+                require(payout >= int(minFeeWithdrawalB));
+                require(tx.outputs[1].value == payout);
+                require(tx.outputs[1].lockingBytecode == feePayoutBytecode);
+                require(tx.outputs[1].tokenCategory == 0x);
+            }
+
+            require(tx.outputs[this.activeInputIndex].lockingBytecode ==
+                    tx.inputs[this.activeInputIndex].lockingBytecode);
+            require(tx.outputs[this.activeInputIndex].tokenCategory ==
+                    tx.inputs[this.activeInputIndex].tokenCategory);
+            require(tx.outputs[this.activeInputIndex].nftCommitment ==
+                    tx.inputs[this.activeInputIndex].nftCommitment + bytes(bondingCompleted));
+        } else {
+            // Initiate Completion -- 1 input now, was 2 (main+fee) in the original
+            require(tx.inputs.length == 1);
+            require(tx.outputs.length == 1);
+
+            require(sha256(hashedParams) == paramsHash);
+            bytes clen2, bytes crem2 = hashedParams.split(1);
+            bytes completionBytecode = crem2.split(int(clen2))[0];
+
+            int txFee2 = 1000;
+            require(tx.outputs[0].value == tx.inputs[0].value - txFee2);
+            require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount);
+            require(tx.outputs[0].lockingBytecode == completionBytecode);
+            // Pin the output to the bare 32-byte category, i.e. capability=none. The
+            // curve UTXO input is always capability=mutable (tokenCategory reads back as
+            // 33 bytes: category + 0x01 suffix). A none-capability output's tokenCategory
+            // is exactly the 32-byte bare category, so comparing the FULL output category
+            // against the input's first 32 bytes forces the output NFT to be none and
+            // rejects a mutable output. graduate.ts's initiateCompletion() already builds
+            // this output as capability=none, so nothing legitimate changes.
+            //
+            // SECURITY (this is the v3 fix). The previous revision compared .split(32)[0]
+            // on BOTH sides, leaving the output capability byte unconstrained. Initiate
+            // Completion is permissionless, so an attacker could hand the completion
+            // contract a still-mutable NFT. p_bond_complete.cash's Complete() then
+            // requires a full tokenCategory match on all 5 DEX outputs plus the burn
+            // output, which cannot be satisfied with a single mutable NFT and no minting
+            // input, so Complete() becomes permanently unsatisfiable: graduation bricks
+            // and the curve reserve is frozen forever. Reported by external peer review,
+            // 2026-09. The original two-contract p_bond_main.cash was NOT vulnerable: it
+            // pinned the output via the separate capability=none fee input.
+            require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]);
+
+            bytes hashedCompletionParams = hashedParams +
+                                            toPaddedBytes(bonding_p, 8) +
+                                            toPaddedBytes(bonding_y0, 8) +
+                                            toPaddedBytes(bonding_pshift, 8);
+            require(tx.outputs[0].nftCommitment == sha256(hashedCompletionParams));
+        }
+    }
+}

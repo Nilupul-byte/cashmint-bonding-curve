@@ -1,14 +1,20 @@
-// UI TEST VARIANT of the unified (single-input) merged contract — identical to
-// p_bond_unified_v2_test3_v013.cash except x0/y0/bonding_max are scaled down further
-// (same methodology, same relative shape) so the BondingCurveTestPage UI can drive
-// several interactive buys/sells and still reach graduation cheaply and repeatably:
-// graduation trigger costs ~1,001,692 sats total (~0.01 BCH) instead of test3's
-// ~3,995,696 sats (~0.04 BCH) — see NOTES.md "Minimal UI" section for the full
-// derivation. NOT the design meant to inform real economics.
+// UI TEST VARIANT v2 — same constants as p_bond_unified_v2_ui_v013.cash, one security
+// fix in the Initiate Completion branch: the output NFT capability is now pinned to none
+// (see the SECURITY comment on that require() below). ui_v013 had only chipnet demo
+// tokens (genesisOutput.category is chipnet); superseded, address kept inspectable, no
+// live code path should reference ui_v013 going forward.
 //
-// Everything else (ABI, branching, all require() checks, commitment layout) is
+// The demo/dev curve behind /token's bare fallback and /dev/bonding-curve. x0/y0/
+// bonding_max are scaled down from p_bond_unified_v2_test3_v013.cash (same methodology,
+// same relative shape) so the UI can drive several interactive buys/sells and still
+// reach graduation cheaply and repeatably: graduation trigger costs ~1,001,692 sats
+// (~0.01 BCH). NOT the design meant to inform real economics.
+//
+// Everything else (ABI, branching, every other require() check, commitment layout) is
 // byte-for-byte identical to p_bond_unified_v2_test3_v013.cash — only the three
-// constants on lines 34-36 differ. Compiled with cashc 0.13.2, same as test3.
+// constants below and the one Initiate-Completion capability require() differ. Compiled
+// with cashc 0.13.2. Capability pin covered by the MockNetworkProvider regression suite
+// in src/services/bonding/__tests__/unifiedCompletion.test.ts.
 
 contract PBond_unified_v2(
 ) {
@@ -116,19 +122,25 @@ contract PBond_unified_v2(
             require(tx.outputs[0].value == tx.inputs[0].value - txFee2);
             require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount);
             require(tx.outputs[0].lockingBytecode == completionBytecode);
-            // Bare-category compare, NOT a plain tokenCategory==tokenCategory check: the
-            // input carries capability='mutable' (tokenCategory reads back as 33 bytes,
-            // category + 0x01 suffix) while the output carries capability='none' for the
-            // completion contract (32 bytes, no suffix) -- these can never be bit-equal.
-            // The original p_bond_main.cash sidestepped this entirely by comparing
-            // against the SEPARATE fee input instead (capability='none' there too,
-            // matching the output "for free" -- see its own comment: "Immutable
-            // capability copied from fee input (saves us the .split(32)[0])"). Merging
-            // main+fee into one always-mutable UTXO loses that free win, so the
-            // .split(32)[0] the original explicitly avoided is now required here.
-            // Found via a real chipnet OP_EQUALVERIFY rejection, not caught by any local
-            // build/dry-run check.
-            require(tx.outputs[0].tokenCategory.split(32)[0] == tx.inputs[0].tokenCategory.split(32)[0]);
+            // Pin the output to the bare 32-byte category, i.e. capability=none. The
+            // curve UTXO input is always capability=mutable (tokenCategory reads back as
+            // 33 bytes: category + 0x01 suffix). A none-capability output's tokenCategory
+            // is exactly the 32-byte bare category, so comparing the FULL output category
+            // against the input's first 32 bytes forces the output NFT to be none and
+            // rejects a mutable output. graduate.ts's initiateCompletion() already builds
+            // this output as capability=none, so nothing legitimate changes.
+            //
+            // SECURITY (this is the v2 fix). The previous revision compared .split(32)[0]
+            // on BOTH sides, leaving the output capability byte unconstrained. Initiate
+            // Completion is permissionless, so an attacker could hand the completion
+            // contract a still-mutable NFT. p_bond_complete.cash's Complete() then
+            // requires a full tokenCategory match on all 5 DEX outputs plus the burn
+            // output, which cannot be satisfied with a single mutable NFT and no minting
+            // input, so Complete() becomes permanently unsatisfiable: graduation bricks
+            // and the curve reserve is frozen forever. Reported by external peer review,
+            // 2026-09. The original two-contract p_bond_main.cash was NOT vulnerable: it
+            // pinned the output via the separate capability=none fee input.
+            require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]);
 
             bytes hashedCompletionParams = hashedParams +
                                             toPaddedBytes(bonding_p, 8) +
