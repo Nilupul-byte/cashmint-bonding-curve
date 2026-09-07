@@ -29,16 +29,26 @@ found the capability bug fixed in #2.
 
 | Contract | Files | cashc | Purpose |
 |---|---|---|---|
-| **Bonding curve** | `p_bond_curve.cash` / `.json` | 0.13.2 | Single-input covenant handling buy, sell, fee withdrawal, and initiating graduation through one `TradeOrWithdrawOrComplete` entry point that branches on the supplied `hashedParams`. Production constants: 500,000,000 total supply, `~9.45 BCH` raised at graduation. (Compiled `contractName` is `PBondUnifiedV2` — CashMint's single-input merge of upstream `p_bond_main` + `p_bond_fee`.) |
+| **Bonding curve** | `p_bond_curve.cash` / `.json` | 0.13.2 | Single-input covenant handling buy, sell, fee withdrawal, and initiating graduation through one `TradeOrWithdrawOrComplete` entry point that branches on the supplied `hashedParams`. Production constants: 500,000,000 total supply, `~9.45 BCH` raised at graduation. (Compiled `contractName` is `PBond_unified_v2` — CashMint's single-input merge of upstream `p_bond_main` + `p_bond_fee`.) |
 | **Completion** | `p_bond_complete.cash` / `.json` | 0.12.1 | Second-stage covenant that finishes graduation: recomputes the DEX-pool split on-chain from the curve's own reserve (not trusted from the caller), pays the graduation reward and accrued fee, and creates the 5 Cauldron pool outputs. Unchanged from the original p-bond `p_bond_complete`. |
 | **Launcher vesting** | `p_bond_vesting_v2.cash` / `.json` | 0.13.2 | **Not part of upstream p-bond — CashMint-specific.** A "Product Development" allocation carved out at genesis (10% of supply) for the launcher: 2-month cliff, then 10 equal monthly installments, payout hard-locked to a single committed beneficiary key. `Claim()` is permissionless (no signature), so anyone — in practice a cron — can trigger a due installment; the payout destination is derived from the vault's own on-chain commitment, so a third-party trigger cannot redirect funds (same pattern as OpenZeppelin's public `release()`). |
 
-Compile:
+## Building and verifying
+
+Both `cashc` compiler versions are pinned as dev dependencies (`0.13.2` for the curve and
+vesting, `0.12.1` for completion — it predates the 0.13 language changes and is not
+"upgraded" on recompile). `cashc` 0.13.2 is run with its default options
+(`enforceFunctionParameterTypes` and `enforceLocktimeGuard` both on).
+
 ```
-npx cashc@0.13.2 p_bond_curve.cash    --output p_bond_curve.json
-npx cashc@0.13.2 p_bond_vesting_v2.cash --output p_bond_vesting_v2.json
-npx cashc@0.12.1 p_bond_complete.cash  --output p_bond_complete.json
+npm install
+npm run verify    # recompile from source, assert every committed .json's bytecode + fingerprint matches
+npm run compile   # regenerate the .json artifacts from source
 ```
+
+`npm run verify` is the reproducible-build check: it confirms the compiled artifacts in
+`contracts/` are exactly what the `.cash` sources produce, so a review of the source is a
+review of what runs on-chain.
 
 ## Curve constants
 

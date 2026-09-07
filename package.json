@@ -1,0 +1,15 @@
+{
+  "name": "cashmint-bonding-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CashScript bonding-curve contracts for CashMint's token-launch product (an adapted fork of p-bond).",
+  "scripts": {
+    "verify": "node compile.mjs",
+    "compile": "node compile.mjs --write"
+  },
+  "devDependencies": {
+    "cashc": "0.13.2",
+    "cashc-v12": "npm:cashc@0.12.1"
+  }
+}
