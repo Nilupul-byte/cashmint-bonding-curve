@@ -18,8 +18,7 @@ Cash mainnet** using a ~1000×-downscaled instance of the identical contract log
 dollars of real BCH per full cycle; e.g. token `TT5`, graduation tx
 `2347e0d62a7aa957e88a2dc81300696ebfc5d7caa2c8d5a72be0bc0c8fc6c276`). Production will move
 to the parameters in this repo after this review. Prior review: one informal pass that
-found the capability bug fixed in #2. A second pair of eyes from someone who knows the
-original p-bond design is what we're after.
+found the capability bug fixed in #2.
 
 > The `.cash` file comments reference CashMint's internal repo (`NOTES.md`, `src/…`,
 > `scripts/…`) and internal version history (earlier `launch_v1`/`launch_v2` constant
@@ -124,9 +123,25 @@ verified live by a real mainnet graduation.
 
 Upstream lets the launcher choose the fee recipient/rate. This fork hardcodes the trading
 fee (1%) and graduation reward (1,000 sats) as platform revenue — the launcher is already
-compensated via the vesting allocation (#5). The `~18%` graduation residual (reserve
-collected minus the price-continuity-exact amount the LP can absorb) is routed to a fixed
-`PLATFORM_ADDRESS` P2PKH.
+compensated via the vesting allocation (#5).
+
+**Why there is a ~18% graduation residual.** At graduation, `p_bond_complete` recomputes
+the AMM pool deposit on-chain so the pool opens at *exactly* the curve's final marginal
+price — no arbitrage gap between the last curve trade and the first pool trade. That
+price-continuity constraint is what caps the LP deposit at roughly 82% of the reserve the
+curve collected: depositing the full 100% would open the pool below the curve's last price
+and invite an instant arbitrage dump. The ~18% difference is inherent to p-bond's original
+curve shape — it is a function of `y0` (the curve's token-domain offset), not a rate this
+fork picked, and BCHpump, running the unmodified upstream contracts, shows the same split.
+It also doubles as the solvency margin the graduation math needs: `launch_v1` bricked
+precisely because its constants pushed this quantity negative.
+
+Upstream routes the residual as a fee. This fork routes it to a fixed `PLATFORM_ADDRESS`
+P2PKH, and **for now CashMint uses it to top up the token's Cauldron liquidity manually**
+after graduation. This is the first cohort of launches, so the contracts here run
+p-bond's original curve variant (uniformly scaled, unmodified graduation math);
+reducing or eliminating the residual with a purpose-tuned curve that locks closer to 100%
+into the LP is planned future work, not part of this review.
 
 ### 4. BCMR AuthHead burned at genesis (transaction construction, not a contract change)
 
