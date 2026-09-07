@@ -1,60 +1,83 @@
 # CashMint Bonding Curve Contracts
 
 [CashScript](https://cashscript.org/) contracts for CashMint's self-serve token-launch
-pilot — a pump.fun-style bonding curve for Bitcoin Cash CashTokens, graduating into a
+product — a pump.fun-style bonding curve for Bitcoin Cash CashTokens, graduating into a
 real [Cauldron](https://cauldron.quest/) AMM pool. Built on top of
 [p-bond](https://gitlab.com/0353F40E/p-bond) (credit: 0353F40E) — this repo is CashMint's
-patched/adapted version, shared to ask for feedback on the changes below.
+patched/adapted version, shared for review of the changes below.
 
-**Status: on mainnet at deliberately tiny scale, not formally audited.** The `mini`
-curve (`~0.0095 BCH` graduation) has been run end-to-end on real Bitcoin Cash mainnet —
-genesis → buys/sells → Initiate Completion → Complete Completion → 5 real Cauldron pools
-— for a few dollars of real BCH per full cycle (token `TT5`, category
-`fb790da4ba13fbd4d6de364799f4b2cd47b3e478a0ffd4d8660524f56eab04c3`; graduation tx
-`2347e0d62a7aa957e88a2dc81300696ebfc5d7caa2c8d5a72be0bc0c8fc6c276`). The `launch` curve
-(real economics, `~9.45 BCH`) has the same full cycle proven on chipnet only. No paid
-external audit has happened — internal review + one informal peer review (which found the
-capability bug fixed below). A second pair of eyes from someone who knows the original
-design is exactly what we're after.
+**This repo contains only the three contracts that go to production**, at production
+parameters. Internal test-scale and dev-scale curve instances are not included — they are
+byte-for-byte identical logic, differing only in the numeric constants reviewed in
+"[Curve constants](#curve-constants)" below.
 
-> Comment references in the `.cash` files to `NOTES.md` / `src/...` / `scripts/...` point
-> at CashMint's internal repo and can be ignored for review.
+**Status: not formally audited.** The full lifecycle (genesis → buys/sells → fee
+withdrawal → Initiate Completion → Complete Completion → 5 real Cauldron pools) is proven
+end-to-end on chipnet at production parameters, and separately proven on **real Bitcoin
+Cash mainnet** using a ~1000×-downscaled instance of the identical contract logic (a few
+dollars of real BCH per full cycle; e.g. token `TT5`, graduation tx
+`2347e0d62a7aa957e88a2dc81300696ebfc5d7caa2c8d5a72be0bc0c8fc6c276`). Production will move
+to the parameters in this repo after this review. Prior review: one informal pass that
+found the capability bug fixed in #2. A second pair of eyes from someone who knows the
+original p-bond design is what we're after.
+
+> The `.cash` file comments reference CashMint's internal repo (`NOTES.md`, `src/…`,
+> `scripts/…`) and internal version history (earlier `launch_v1`/`launch_v2` constant
+> revisions, the downscaled `mini` instance, a retired signature-gated vesting `v1`).
+> Those references are context only and can be ignored for review.
 
 ## Contracts
 
 | Contract | Files | cashc | Purpose |
 |---|---|---|---|
-| **PBond_unified_v2** — `ui` | `p_bond_unified_v2_ui_v2.cash` / `.json` | 0.13.2 | The bonding curve — a single-input covenant handling buy, sell, fee withdrawal and initiating graduation through one `TradeOrWithdrawOrComplete` entry point that branches on the supplied `hashedParams`. **`ui`** uses tiny constants (`~0.01 BCH` graduation) for cheap interactive UI testing. |
-| **PBond_unified_v2** — `launch` | `p_bond_unified_v2_launch_v3.cash` / `.json` | 0.13.2 | Same contract, real-economics constants (500,000,000 total supply, `~9.45 BCH` graduation). Full cycle proven on chipnet. |
-| **PBond_unified_v2** — `mini` | `p_bond_unified_v2_mini_v2.cash` / `.json` | 0.13.2 | Same contract, a **safe uniform down-scaling** of `launch` (`~0.0095 BCH` graduation) so a full mainnet launch/graduation cycle costs a few dollars. This is the instance currently live on mainnet. |
-| **PBond_complete** | `p_bond_complete.cash` / `.json` | 0.12.1 | Second-stage covenant that finishes graduation: recomputes the DEX-pool split on-chain from the curve's own reserve (not trusted from the caller), pays the graduation reward and accrued fee, and creates the 5 Cauldron pool outputs. Unchanged from the original p-bond `p_bond_complete`. |
-| **PBondVesting** — v1 | `p_bond_vesting_v1.cash` / `.json` | 0.13.2 | **Not part of upstream p-bond — CashMint-specific.** A "Product Development" allocation carved out at genesis (10% of supply) for the launcher, vesting over 12 months (2-month cliff + 10 monthly installments) to a single key. `Claim()` gated to the beneficiary's signature. |
-| **PBondVesting** — v2 | `p_bond_vesting_v2.cash` / `.json` | 0.13.2 | Permissionless variant of v1: `Claim()` takes no signature, so anyone (in practice a cron) can trigger a due installment. The payout destination is still derived from the vault's own on-chain commitment, so a third-party trigger cannot redirect funds — same pattern as OpenZeppelin's public `release()`. Live on mainnet for launches from 2026-08-29 on. v1 is kept unchanged for its existing vaults. |
+| **Bonding curve** | `p_bond_curve.cash` / `.json` | 0.13.2 | Single-input covenant handling buy, sell, fee withdrawal, and initiating graduation through one `TradeOrWithdrawOrComplete` entry point that branches on the supplied `hashedParams`. Production constants: 500,000,000 total supply, `~9.45 BCH` raised at graduation. (Compiled `contractName` is `PBondUnifiedV2` — CashMint's single-input merge of upstream `p_bond_main` + `p_bond_fee`.) |
+| **Completion** | `p_bond_complete.cash` / `.json` | 0.12.1 | Second-stage covenant that finishes graduation: recomputes the DEX-pool split on-chain from the curve's own reserve (not trusted from the caller), pays the graduation reward and accrued fee, and creates the 5 Cauldron pool outputs. Unchanged from the original p-bond `p_bond_complete`. |
+| **Launcher vesting** | `p_bond_vesting_v2.cash` / `.json` | 0.13.2 | **Not part of upstream p-bond — CashMint-specific.** A "Product Development" allocation carved out at genesis (10% of supply) for the launcher: 2-month cliff, then 10 equal monthly installments, payout hard-locked to a single committed beneficiary key. `Claim()` is permissionless (no signature), so anyone — in practice a cron — can trigger a due installment; the payout destination is derived from the vault's own on-chain commitment, so a third-party trigger cannot redirect funds (same pattern as OpenZeppelin's public `release()`). |
 
-The three `unified_v2` curve files are **byte-for-byte identical logic** — only the three
-curve constants (`bonding_max`, `bonding_x0`, `bonding_y0`) differ per instance:
-
-| instance | `bonding_max` | `bonding_x0` | `bonding_y0` | graduation reserve |
-|---|---|---|---|---|
-| `ui`     | 47,530,000     | 433,000     | 6,985,000     | `~0.01 BCH` |
-| `launch` | 45,000,000,000 | 409,851,000 | 6,613,386,206 | `~9.45 BCH` |
-| `mini`   | 4,500,000,000  | 409,851     | 661,338,621   | `~0.0095 BCH` |
-
-`mini` = `launch` with the sats domain (`x0`) ÷1000 and the token domain (`max`, `y0`)
-÷10. The token-domain factor cancels out of every satoshi result (verified algebraically
-and by exact-integer simulation of both `requiredOutSats` and `p_bond_complete`'s
-`dex_sats` formula); `bonding_max` 4.5e9 is chosen to sit unambiguously between `ui`'s
-47.53e6 and `launch`'s 45e9 so on-chain instance detection stays unambiguous.
-
-Compile (each file):
+Compile:
 ```
-npx cashc@0.13.2 <name>.cash --output <name>.json     # the three curves + both vesting
-npx cashc@0.12.1 p_bond_complete.cash --output p_bond_complete.json
+npx cashc@0.13.2 p_bond_curve.cash    --output p_bond_curve.json
+npx cashc@0.13.2 p_bond_vesting_v2.cash --output p_bond_vesting_v2.json
+npx cashc@0.12.1 p_bond_complete.cash  --output p_bond_complete.json
 ```
+
+## Curve constants
+
+`p_bond_curve` hardcodes three curve constants. Everything else about the contract (ABI,
+branching, every `require()`, commitment layout) is independent of them.
+
+| constant | value | meaning |
+|---|---|---|
+| `bonding_max` | 45,000,000,000 | curve pool size (90% of the 50,000,000,000-raw / 500,000,000-display total supply; the other 10% is the vesting allocation) |
+| `bonding_x0`  | 409,851,000    | price-curve sats-domain offset |
+| `bonding_y0`  | 6,613,386,206  | price-curve token-domain offset |
+| `bonding_initial_sats` | 1,000 | seed reserve at genesis |
+
+These are a **genuine uniform scaling** of the proven upstream p-bond constants by a
+single factor `k` applied to `x0`, `y0` and `max` alike (`k = 100,000,000,000 /
+45,000,000,000`). Uniform scaling is what keeps the graduation-completion safety ratio
+(the DEX-pool split as a fraction of the curve's actual reserve at the 80% trigger)
+constant across scale — here `≈ 0.8264`, matching upstream p-bond and every other scaled
+instance. It was verified against `p_bond_complete`'s **actual on-chain `dex_sats`
+formula** (recomputed and hard-enforced inside that contract, not a client-side estimate),
+not just the curve-price formula.
+
+An earlier CashMint instance (`launch_v1`, chipnet, worthless test funds) got this wrong:
+it fixed `bonding_max` to a round number independently instead of deriving it via the same
+`k` as `x0`/`y0`. Its safety ratio came out to `1.048` — the on-chain DEX split exceeded
+the reserve, leaving a negative remainder for the reward/fee outputs, and `Complete()` was
+rejected with `dust (code 64)` on every attempt, permanently. That token is stuck at
+"ready to graduate" forever. The production constants above restore the safe `0.8264`
+ratio; see the `.cash` header for the derivation.
+
+Total supply is 500,000,000 rather than a round 1,000,000,000: uniform scaling ties the
+BCH raised at graduation and the total supply together through the one factor `k`, so a
+round supply number and a specific BCH target (`~9` BCH here) are generally not both
+achievable. 500M lands closest to the `~9` BCH target while keeping every number round.
 
 ## CashMint's changes vs upstream p-bond
 
-### 1. Single-input merge (`p_bond_main` + `p_bond_fee` → `p_bond_unified_v2`)
+### 1. Single-input merge (`p_bond_main` + `p_bond_fee` → one covenant)
 
 Upstream p-bond splits the live curve across two covenants — `p_bond_main` (reserve +
 state NFT) and `p_bond_fee` (accrued trading fees, a separate `capability=none` NFT). This
@@ -95,7 +118,7 @@ the full output category against the input's first 32 bytes forces `none` and re
 `mutable`. Bytecode diff is exactly `20 OP_SPLIT OP_DROP` removed from the output side,
 nothing else; every constant is unchanged. Covered by a MockNetworkProvider regression
 suite (`vmTarget: 'BCH_2026_05'` — the ~46-byte commitment needs the 2026 ruleset) and
-verified live by `TT5`'s graduation.
+verified live by a real mainnet graduation.
 
 ### 3. Graduation reward + fee are platform-fixed
 
@@ -107,7 +130,7 @@ collected minus the price-continuity-exact amount the LP can absorb) is routed t
 
 ### 4. BCMR AuthHead burned at genesis (transaction construction, not a contract change)
 
-Genesis now places the BCMR `OP_RETURN` at **output 0** (curve UTXO moves to output 1, so
+Genesis places the BCMR `OP_RETURN` at **output 0** (curve UTXO moves to output 1, so
 `tx.inputs[0].outpointIndex == 0` still holds). Output 0 is unspendable, so the token's
 CHIP-BCMR authchain terminates at genesis and its name/icon/description are frozen
 forever. An earlier revision put the spendable curve UTXO at output 0, which — because the
@@ -115,21 +138,20 @@ curve's trade branch doesn't restrict extra outputs — let any trader attach th
 `OP_RETURN "BCMR"` to a buy/sell and rewrite the token's identity. Matches how BCHpump
 (the largest live p-bond deployment) does its genesis.
 
-### 5. Launcher vesting (`PBondVesting` v1 / v2)
+### 5. Launcher vesting (`p_bond_vesting_v2`)
 
 New, not in upstream. 10% of supply is carved out at genesis into a vesting vault for the
 launcher: 2-month cliff, then 10 equal monthly installments, payout hard-locked to a
-single committed beneficiary key. v1 requires the beneficiary's signature to claim; v2 is
-permissionless (anyone may trigger a due installment; funds still go only to the committed
-beneficiary) so a cron can auto-release. There is deliberately no recovery path if the
-beneficiary key is lost. See each `.cash` file's header for the full design rationale
-(including why installments are discrete monthly rather than continuous — a CashScript
-`tx.time` restriction).
+single committed beneficiary key. `Claim()` is permissionless (anyone may trigger a due
+installment; funds still go only to the committed beneficiary) so a cron can trigger each
+release without launcher action. There is deliberately no recovery path if the beneficiary
+key is lost. Installments are discrete monthly rather than continuous because of a
+CashScript restriction on how `tx.time` can be used.
 
 ## What we'd value feedback on
 
-1. The single-input merge (#1) — any lost invariant beyond the capability pin.
+1. The single-input merge (#1) — any invariant lost beyond the capability pin.
 2. The capability-pin fix (#2) — is `tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]` the right form, and is anything else in the merged contract under-constrained the same way?
-3. `mini` as a uniform down-scale of `launch` (#) — is the "token-domain factor cancels out" argument airtight, or is there a rounding regime where it isn't?
-4. The vesting contracts (#5), especially v2's permissionless claim.
-5. Anything in `p_bond_complete`'s on-chain split recomputation that this fork's changes could have destabilised.
+3. The curve constants — is the "uniform scaling keeps the `0.8264` safety ratio" argument airtight, or is there a rounding regime at this scale where the on-chain `dex_sats` result diverges from it?
+4. The vesting contract (#5), especially the permissionless `Claim()`.
+5. Anything in `p_bond_complete`'s on-chain split recomputation that this fork's changes to the curve side could have destabilised.

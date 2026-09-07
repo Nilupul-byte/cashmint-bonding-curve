@@ -1,44 +1,40 @@
-// PBondVestingV2 — permissionless variant of PBondVesting (p_bond_vesting_v1.cash).
-// Anyone may broadcast a Claim() once an installment's time threshold is reached — no
-// beneficiary signature is required to trigger it. This does NOT let anyone redirect
-// funds: the payout destination (beneficiaryLock) is still derived directly from the
-// vault's own on-chain commitment, exactly as in v1, so a claim triggered by any third
-// party still pays out to the same fixed beneficiary address, in the same amount, on
-// the same schedule. This mirrors the standard "public release()" vesting pattern (e.g.
-// OpenZeppelin's VestingWallet, where anyone may call release() but funds are hard-
-// locked to the beneficiary) and matches the "permissionless + cron-automated"
-// philosophy this pilot's own curve contracts already use for Initiate/Complete
-// Completion and fee withdrawal — see scripts/bonding/cron.ts.
+// PBondVesting — the launcher's "Product Development" allocation. 10% of supply is carved
+// out at genesis into a vault that releases on a fixed schedule: a 2-month cliff, then 10
+// equal monthly installments, to a single committed beneficiary key. Not part of upstream
+// p-bond.
 //
-// v1 is kept unchanged and untouched — see p_bond_vesting_v1.cash and NOTES.md Phase 22
-// for the full security review this variant builds on (no vulnerability found in v1;
-// this is a product-design change, not a bug fix). v1's own already-genesis'd vaults
-// remain claimable only through v1's own contract address/artifact; this is a NEW
-// instance for future genesis, not a drop-in replacement — dropping the sig/pubkey ABI
-// parameters changes the compiled bytecode and therefore the contract's address
-// (add-contract-version checklist step 5).
+// Claim() is PERMISSIONLESS: anyone may broadcast it once an installment's time threshold
+// is reached, no beneficiary signature required. This does NOT let anyone redirect funds
+// or change the schedule: the payout destination (beneficiaryLock) and every amount are
+// derived directly from the vault's own on-chain commitment, never from the caller, so a
+// claim triggered by any third party still pays out to the same fixed beneficiary
+// address, in the same amount, on the same schedule. Mirrors the standard "public
+// release()" vesting pattern (e.g. OpenZeppelin's VestingWallet) and matches the
+// permissionless + cron-automated philosophy the curve contracts already use for
+// Initiate/Complete Completion and fee withdrawal. scripts/bonding/cron.ts triggers each
+// installment as it comes due; the read-only investor view is VestingDashboardPage.tsx.
 //
-// LIVE since Phase 23: every self-serve launch's "Product Development" allocation now
-// genesis's into THIS contract (launch.ts -> getVestingContractV2()), and
-// scripts/bonding/cron.ts's auto-release poll step claims due installments against it.
-// Re-audited Phase 29 (NOTES.md) with the same lens as the curve-contract capability
-// fix: the recreated-vault output uses a FULL `tokenCategory == tx.inputs[0].tokenCategory`
-// match (pins `mutable`), so it does NOT have the curve contract's split-both-sides bug.
-// One low-severity finding (V-1): the FINAL-claim payout does not forbid a junk
-// capability=none NFT riding along — cosmetic only, lands at the beneficiary's own
-// P2PKH, carries no authority. Covered by src/services/bonding/__tests__/vestingSecurity.test.ts.
+// LIVE: every self-serve launch's Product Development allocation genesis's into this
+// contract (launch.ts -> getVestingContractV2()). An earlier signature-gated version
+// (Claim() required the beneficiary's own signature) was retired 2026-09-07 after only
+// ever holding internal test allocations; its source is in _superseded/.
 //
-// Real trade-off, stated plainly: dropping the identity check does not fix the "lost
-// beneficiary key" risk carried over unchanged from v1 — a lost key still permanently
-// strands whatever's paid to that P2PKH, since receiving still requires the same key
-// spending would have. Permissionless triggering only removes the risk of the founder
-// forgetting to manually claim each month, and enables cron automation of the release
-// itself (the same class of convenience Initiate/Complete/WithdrawFee already get).
+// Audited (NOTES.md Phase 22 + Phase 29) with the same lens as the curve-contract
+// capability fix: the recreated-vault output uses a FULL
+// `tokenCategory == tx.inputs[0].tokenCategory` match (pins `mutable`), so it does NOT
+// have the curve contract's split-both-sides bug. One low-severity finding (V-1): the
+// FINAL-claim payout does not forbid a junk capability=none NFT riding along — cosmetic
+// only, lands at the beneficiary's own P2PKH, carries no authority. Covered by
+// src/services/bonding/__tests__/vestingSecurity.test.ts.
 //
-// Everything else — schedule constants, commitment layout, dust-remainder absorption on
-// the final claim — is byte-for-byte identical to v1. See that file's header for the
-// full design rationale (discrete installments forced by CashScript's tx.time
-// restriction, 30-day months, etc.).
+// Trade-off, stated plainly: there is deliberately no recovery path if the beneficiary
+// key is lost — a lost key permanently strands whatever has not been released, since
+// receiving still requires that key. Permissionless triggering only removes the need for
+// the founder to manually claim each month and enables cron automation of the release.
+//
+// Installments are discrete monthly rather than continuous linear release because of a
+// CashScript restriction on how `tx.time` can be used (confirmed by direct compiler
+// testing). Months are a flat 30 days.
 
 contract PBondVestingV2(
 ) {
@@ -56,11 +52,10 @@ contract PBondVestingV2(
         bytes vestStartB, bytes r2 = r1.split(4);
         bytes originalAmountB, bytes claimsSoFarB = r2.split(8);
 
-        // No hash160(pk)==beneficiaryPKH / checkSig(s, pk) here — that's the entire
-        // diff from v1. Nothing else needs to change: every output check below already
-        // derives its required destination/amount straight from the commitment itself,
-        // never from the caller, so removing the caller's identity check doesn't loosen
-        // any of them.
+        // No hash160(pk)==beneficiaryPKH / checkSig(s, pk) gate on the caller: every
+        // output check below already derives its required destination/amount straight
+        // from the commitment itself, never from the caller, so there is nothing for a
+        // caller identity check to protect.
 
         int vestStart = int(vestStartB);
         int originalAmount = int(originalAmountB);
